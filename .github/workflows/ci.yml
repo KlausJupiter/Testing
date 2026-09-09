@@ -1,0 +1,122 @@
+name: PR Checks
+
+on:
+    pull_request:
+        branches: ["main"]
+    merge_group:
+        types: [checks_requested]
+    workflow_dispatch:
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    light:
+        name: Detect changes, format check, SDK check
+        runs-on: ubuntu-latest
+        outputs:
+            branch: ${{ steps.pr.outputs.branch }}
+            base_sha: ${{ steps.pr.outputs.base_sha }}
+            sdk_build_needed: ${{ steps.sdk.outputs.build_needed }}
+        steps:
+            - name: Resolve branch and base
+              id: pr
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  GH_REPO: ${{ github.repository }}
+                  QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+                  BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+              run: |
+                  BRANCH="${RUN_CI_REAL_BRANCH:-${GITHUB_HEAD_REF}}"
+                  if [[ -z "${BRANCH}" && "${QUEUE_REF}" =~ /pr-([0-9]+)- ]]; then
+                    BRANCH="$(gh pr view "${BASH_REMATCH[1]}" --json headRefName -q .headRefName)"
+                  fi
+                  BRANCH="${BRANCH:-${GITHUB_REF_NAME}}"
+                  echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+                  echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+                  echo "RUN_CI_REAL_BRANCH=${BRANCH}" >> "$GITHUB_ENV"
+                  echo "event=${GITHUB_EVENT_NAME} ref=${GITHUB_REF} branch=${BRANCH} base_sha=${BASE_SHA}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+
+            - name: Format check
+              run: |
+                  git log --oneline -5 | tee -a "$GITHUB_STEP_SUMMARY"
+                  sleep 5
+                  [[ ! -f fail-format ]]
+
+            - name: Check if SDK-SHA is already staged
+              id: sdk
+              if: github.event_name != 'pull_request'
+              run: |
+                  [[ -f need-sdk ]] && needed=true || needed=false
+                  echo "build_needed=${needed}" >> "$GITHUB_OUTPUT"
+
+    ensure_sdk:
+        name: Ensure yocto SDK
+        needs: [light]
+        if: needs.light.outputs.sdk_build_needed == 'true'
+        runs-on: ubuntu-latest
+        concurrency:
+            group: cpu-lock
+            cancel-in-progress: false
+            queue: max
+        steps:
+            - run: sleep 30
+
+    artemis:
+        name: Artemis CI
+        needs: [light, ensure_sdk]
+        if: |
+            always() &&
+            github.event_name != 'pull_request' &&
+            needs.light.result == 'success' &&
+            (needs.ensure_sdk.result == 'success' || needs.ensure_sdk.result == 'skipped')
+        runs-on: ubuntu-latest
+        env:
+            COMPOSE_PROJECT_NAME: ci-test
+        concurrency:
+            group: cpu-lock
+            cancel-in-progress: false
+            queue: max
+        steps:
+            - uses: actions/checkout@v5
+            - name: Build & Test
+              run: |
+                  docker run -d --label "com.docker.compose.project=${COMPOSE_PROJECT_NAME}" --name work busybox sleep 90
+                  docker wait work
+                  [[ ! -f fail-heavy ]]
+            - name: Kill this runner's containers
+              if: cancelled()
+              run: |
+                  docker ps --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}"
+                  docker ps -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" | xargs -r docker kill
+                  docker ps --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}"
+
+    yocto:
+        name: Yocto CI
+        needs: [light]
+        if: github.event_name != 'pull_request'
+        runs-on: ubuntu-latest
+        concurrency:
+            group: openbao-startup
+            cancel-in-progress: false
+            queue: max
+        steps:
+            - run: sleep 20
+
+    ci-success:
+        name: CI Success
+        if: always()
+        needs: [light, ensure_sdk, artemis, yocto]
+        runs-on: ubuntu-latest
+        steps:
+            - run: |
+                  if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" \
+                     || "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+                    echo '${{ toJSON(needs) }}'
+                    exit 1
+                  fi
