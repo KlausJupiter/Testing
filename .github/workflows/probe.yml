@@ -1,10 +1,9 @@
 name: Probe
 
 on:
-    schedule:
-        - cron: "0 4 * * *"
+    push:
+        branches: ["never-exists"]
     workflow_dispatch:
-    workflow_call:
 
 jobs:
     j:
