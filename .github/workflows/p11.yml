@@ -1,0 +1,11 @@
+name: P
+
+on:
+    workflow_call:
+    workflow_dispatch:
+
+jobs:
+    j:
+        runs-on: ubuntu-latest
+        steps:
+            - run: echo "h=${{ github.event.pull_request.head.ref }}"
