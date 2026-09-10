@@ -1,0 +1,21 @@
+name: P
+
+on:
+    workflow_call:
+        inputs:
+            ref:
+                type: string
+                default: ""
+    workflow_dispatch:
+
+jobs:
+    j:
+        runs-on: ubuntu-latest
+        steps:
+            - run: echo hi
+    k:
+        needs: [j]
+        if: always() && (github.ref == 'refs/heads/main' || inputs.ref == 'main')
+        runs-on: ubuntu-latest
+        steps:
+            - run: echo k
