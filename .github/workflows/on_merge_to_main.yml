@@ -6,30 +6,5 @@ on:
         branches: ["main"]
 
 jobs:
-    cancel_stale_runs:
-        name: Cancel PR runs that started before this merge
-        if: github.event.pull_request.merged == true
-        runs-on: ubuntu-latest
-        permissions:
-            actions: write
-        steps:
-            - env:
-                  GH_TOKEN: ${{ github.token }}
-                  GH_REPO: ${{ github.repository }}
-              run: |
-                  since="$(gh run view "${GITHUB_RUN_ID}" --json createdAt -q .createdAt)"
-                  gh api "repos/${GH_REPO}/actions/runs?event=pull_request&per_page=100" \
-                      -q ".workflow_runs[] | select(.name == \"PR Checks\" and .status != \"completed\" and .created_at < \"${since}\" and (.run_attempt == 1 or .triggering_actor.login == \"github-actions[bot]\")) | \"\(.id) \(.head_branch) attempt=\(.run_attempt) by=\(.triggering_actor.login)\"" \
-                    | while read -r id branch rest; do
-                        echo "cancelling run ${id} (${branch} ${rest}): main moved"
-                        gh run cancel "${id}"
-                      done
-                  echo "kept:"; gh api "repos/${GH_REPO}/actions/runs?event=pull_request&per_page=100" -q ".workflow_runs[] | select(.name == \"PR Checks\" and .status != \"completed\") | \"  \(.id) \(.head_branch) attempt=\(.run_attempt) by=\(.triggering_actor.login)\""
-
     sdk_promote:
-        needs: [cancel_stale_runs]
         uses: ./.github/workflows/stub_promote.yml
-
-    e2e_ignite:
-        needs: [sdk_promote]
-        uses: ./.github/workflows/stub_e2e.yml
