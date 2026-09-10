@@ -33,5 +33,3 @@ jobs:
     e2e_ignite:
         needs: [sdk_promote]
         uses: ./.github/workflows/stub_e2e.yml
-        with:
-            ref: main
