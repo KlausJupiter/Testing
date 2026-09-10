@@ -28,12 +28,10 @@ jobs:
 
     sdk_promote:
         needs: [cancel_stale_runs]
-        if: ${{ !cancelled() }}
         uses: ./.github/workflows/stub_promote.yml
 
     e2e_ignite:
         needs: [sdk_promote]
-        if: ${{ !cancelled() && github.event.pull_request.merged == true }}
         uses: ./.github/workflows/stub_e2e.yml
         with:
             ref: main
