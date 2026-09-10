@@ -1,0 +1,24 @@
+name: e2e Ignite
+
+on:
+    workflow_call:
+        inputs:
+            ref:
+                type: string
+                default: ""
+    workflow_dispatch:
+
+jobs:
+    ignite-run:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  ref: ${{ inputs.ref }}
+            - run: echo "e2e: ref-input=${{ inputs.ref }} github.ref=${GITHUB_REF} checked-out=$(git rev-parse --short HEAD) main=$(git rev-parse --short origin/main 2>/dev/null || echo n/a)"
+    failure-issue:
+        needs: [ignite-run]
+        if: always() && (github.ref == 'refs/heads/main' || inputs.ref == 'main')
+        runs-on: ubuntu-latest
+        steps:
+            - run: echo "failure-issue job ran (would open/close the issue)"

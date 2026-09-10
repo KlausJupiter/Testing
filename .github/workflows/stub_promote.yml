@@ -1,0 +1,11 @@
+name: SDK Promote
+
+on:
+    workflow_call:
+    workflow_dispatch:
+
+jobs:
+    promote:
+        runs-on: ubuntu-latest
+        steps:
+            - run: echo "promote: event=${GITHUB_EVENT_NAME} merged=${{ github.event.pull_request.merged }} head=${{ github.event.pull_request.head.ref }}"
