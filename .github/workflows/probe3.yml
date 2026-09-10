@@ -1,0 +1,11 @@
+name: SDK Promote
+
+on:
+    workflow_call:
+    workflow_dispatch:
+
+jobs:
+    j:
+        runs-on: ubuntu-latest
+        steps:
+            - run: echo hi
